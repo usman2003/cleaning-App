@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "621684559425",
+    "firebase_url": "https://cleaning-app-2ef8a-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "cleaning-app-2ef8a",
+    "storage_bucket": "cleaning-app-2ef8a.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:621684559425:android:f02034dffb8170948dc0c0",
+        "android_client_info": {
+          "package_name": "com.example.firebase_autentication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7ZeH5tCoHrZtvZ0dNA-BlphA4T4ezH-8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
