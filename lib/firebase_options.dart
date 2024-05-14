@@ -67,4 +67,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'cleaning-app-2ef8a.appspot.com',
     iosBundleId: 'com.example.firebaseAutentication',
   );
+
 }

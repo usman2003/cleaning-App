@@ -2,16 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'ad_state.dart';
 import 'firebase_options.dart';
+
+AppOpenAd? myAppOpenAd;
+
+
+loadAppOpenAd() {
+  AppOpenAd.load(
+      adUnitId: "ca-app-pub-3940256099942544/9257395921", //Your ad Id from admob
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+          onAdLoaded: (ad) {
+            myAppOpenAd = ad;
+            myAppOpenAd!.show();
+          },
+          onAdFailedToLoad: (error) {}),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  
 );
   await FirebaseAnalytics.instance.logAppOpen();
   FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+  MobileAds.instance.initialize();
+   loadAppOpenAd();
+
   runApp(const MyApp());
 }
 
@@ -63,8 +85,47 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
   
+  int _counter = 0;
+  late BannerAd _bannerAd;
+  bool _isloaded = false;
+  late InterstitialAd _interstitialAd;
+  bool _interstitialAdLoaded =false;
+
+
+  void initAD(){
+    InterstitialAd.load(
+      adUnitId: "ca-app-pub-3940256099942544/1033173712",
+       request: AdRequest(), 
+       adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: onAdLoaded,
+        onAdFailedToLoad: (error){
+          print(error);
+        }));
+  }
+  @override
+
+  void initState(){
+    super.initState();
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      size: AdSize.banner,
+      request: AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (Ad ad) {
+          setState(() {
+            _isloaded = true;
+          });
+        },
+        onAdFailedToLoad: (Ad ad, LoadAdError error) {
+          ad.dispose();
+          print('Ad failed to load: $error');
+        },
+      ),
+    );
+    _bannerAd.load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,9 +149,22 @@ class _MyHomePageState extends State<MyHomePage> {
               
               child: const Icon(Icons.add),
             ),
+            ElevatedButton(onPressed: (){
+              if(_interstitialAdLoaded){
+                _interstitialAd.show();
+              }else{
+                print("Ad not loaded");
+              }
+            }, child: Text("Interstial Add")),
+            
           ],
         ),
       ),
+      bottomNavigationBar: _isloaded?Container(
+        height: _bannerAd.size.height.toDouble(),
+        width: _bannerAd.size.width.toDouble(),
+        child: AdWidget(ad: _bannerAd),
+      ):null,
       floatingActionButton: null,
     );
   }
@@ -154,6 +228,24 @@ class _MyHomePageState extends State<MyHomePage> {
         },
       );
     }
+  }
+
+  void onAdLoaded(InterstitialAd ad) {
+    setState(() {
+      _interstitialAd = ad;
+      _interstitialAdLoaded = true;
+      _interstitialAd.fullScreenContentCallback=FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad){
+          _interstitialAd.dispose();
+
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          _interstitialAd.dispose();
+          
+        },
+        
+      );
+    });
   }
 }
 
@@ -235,7 +327,9 @@ class SignInPage extends StatelessWidget {
           ),
         ),
       ),
+      
     );
+    
   }}
   
 class SignUpPage extends StatelessWidget {
@@ -357,6 +451,8 @@ class ForgetPage extends StatelessWidget {
           ),
         ),
       ),
+
+      
     );
   }
 }

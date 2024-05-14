@@ -39,6 +39,8 @@ dependencies:
   firebase_auth: ^4.2.3
   firebase_database: ^10.5.5
   firebase_analytics: ^10.10.5
+  google_mobile_ads: ^5.1.0
+  
 
 
 
