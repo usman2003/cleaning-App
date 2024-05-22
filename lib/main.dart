@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:ffi';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,8 +11,8 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'ad_state.dart';
 import 'firebase_options.dart';
 
-AppOpenAd? myAppOpenAd;
 
+AppOpenAd? myAppOpenAd;
 
 loadAppOpenAd() {
   AppOpenAd.load(
@@ -18,21 +23,29 @@ loadAppOpenAd() {
             myAppOpenAd = ad;
             myAppOpenAd!.show();
           },
-          onAdFailedToLoad: (error) {}),
+          onAdFailedToLoad: (error) {
+            myAppOpenAd?.dispose();
+          }),
   );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+  final FirebaseFirestore db = FirebaseFirestore.instance;
+final CollectionReference counterRef = db.collection('counters');
+final DocumentReference counterDocRef = counterRef.doc('my-counter');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+    
+  
   
 );
+
   await FirebaseAnalytics.instance.logAppOpen();
   FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+  await FirebaseRemoteConfig.instance.setConfigSettings(RemoteConfigSettings(fetchTimeout: Duration(minutes: 1), minimumFetchInterval: Duration(hours: 1)));
+  await FirebaseRemoteConfig.instance.fetchAndActivate();
   MobileAds.instance.initialize();
-   loadAppOpenAd();
 
   runApp(const MyApp());
 }
@@ -86,27 +99,54 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   
+  final FirebaseRemoteConfig remoteConfig=FirebaseRemoteConfig.instance;
+  String BannerKey=FirebaseRemoteConfig.instance.getString('BannerAdKey');
+  late StreamSubscription<RemoteConfigUpdate> streamSubscription;
+
   int _counter = 0;
   late BannerAd _bannerAd;
   bool _isloaded = false;
   late InterstitialAd _interstitialAd;
   bool _interstitialAdLoaded =false;
+  late RewardedInterstitialAd _rewardedInterstitialAd;
+  bool _rewardedInterstitialAdloa = false;
+  late BannerAd _anchoredAdaptiveAd;
+  bool _AdaptiveisLoaded = false;
+  late NativeAd _nativeAd;
+  bool _nativeisLoaded=false;
+  
 
-
-  void initAD(){
-    InterstitialAd.load(
+  Future<void> initAD() async {
+    await InterstitialAd.load(
       adUnitId: "ca-app-pub-3940256099942544/1033173712",
-       request: AdRequest(), 
-       adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: onAdLoaded,
+      request: AdRequest(), 
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: onInsterstialAdLoaded,
         onAdFailedToLoad: (error){
-          print(error);
-        }));
-  }
-  @override
+          print('interstital failed to load: $error');
+        }),
+    );
 
+    await RewardedInterstitialAd.load(adUnitId: "ca-app-pub-3940256099942544/5354046379",
+      request: AdRequest(),
+      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
+        onAdLoaded: onRewardedAdLoaded,
+       onAdFailedToLoad: ((error) {
+        print('interstital Rewarded failed to load: $error');
+       }
+       ))
+      );
+  }
+
+  @override
   void initState(){
     super.initState();
+    streamSubscription = remoteConfig.onConfigUpdated.listen((event) async {
+      await remoteConfig.fetchAndActivate();
+      setState(() {
+        BannerKey=remoteConfig.getString('BannerAdKey');
+      });
+     });
     _bannerAd = BannerAd(
       adUnitId: 'ca-app-pub-3940256099942544/6300978111',
       size: AdSize.banner,
@@ -123,7 +163,12 @@ class _MyHomePageState extends State<MyHomePage> {
         },
       ),
     );
+    loadNativeAd();
+    loadAppOpenAd();
     _bannerAd.load();
+    initAD();
+    
+    
   }
 
   @override
@@ -133,42 +178,107 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline6,
-            ),
-            SizedBox(height: 34,),
-            ElevatedButton(onPressed: signout, child: Text('Signout')),
-            ElevatedButton(onPressed: DeleteUser, child: Text('Delete Account')),
-            ElevatedButton(
-              onPressed: _incrementCounter,
-              
-              child: const Icon(Icons.add),
-            ),
-            ElevatedButton(onPressed: (){
-              if(_interstitialAdLoaded){
-                _interstitialAd.show();
-              }else{
-                print("Ad not loaded");
-              }
-            }, child: Text("Interstial Add")),
-            
-          ],
-        ),
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: <Widget>[
+      const Text('You have pushed the button this many times:'),
+      Text(
+        '$_counter',
+        style: Theme.of(context).textTheme.headline6,
       ),
-      bottomNavigationBar: _isloaded?Container(
-        height: _bannerAd.size.height.toDouble(),
-        width: _bannerAd.size.width.toDouble(),
-        child: AdWidget(ad: _bannerAd),
+      SizedBox(height: 34,),
+      ElevatedButton(onPressed: signout, child: Text('Signout')),
+      ElevatedButton(onPressed: DeleteUser, child: Text('Delete Account')),
+      ElevatedButton(
+        onPressed: _incrementCounter,
+        child: const Icon(Icons.add),
+      ),
+      if(_nativeisLoaded)
+        Container(
+          width:300,
+          height:100,
+          child: AdWidget(ad: _nativeAd),
+        )
+      else
+        Text('Native Ad not loaded'),
+      ElevatedButton(onPressed: (){
+        if(_interstitialAdLoaded){_interstitialAd.show();
+        }else{
+          print("Ad not loaded");
+        }
+      }, child: Text("Interstial Add")),
+      ElevatedButton(onPressed: ShowRewardedInterstitialAd, child: Text("Rewarded Interstial"))
+    ],
+  ),
+),
+      
+      bottomNavigationBar: _AdaptiveisLoaded?Container(
+         width: _anchoredAdaptiveAd.size.width.toDouble(),
+                  height: _anchoredAdaptiveAd.size.height.toDouble(),
+        child: AdWidget(ad: _anchoredAdaptiveAd),
       ):null,
       floatingActionButton: null,
     );
-  }
+}
+  void onInsterstialAdLoaded(InterstitialAd ad) {
+    setState(() {
+      _interstitialAd = ad;
+      _interstitialAdLoaded = true;
+      _interstitialAd.fullScreenContentCallback=FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad){
+          _interstitialAd.dispose();
 
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          _interstitialAd.dispose();
+          print('failed to load add $error');
+        },
+        
+      );
+    });
+  }
+  void ShowRewardedInterstitialAd(){
+  if(_rewardedInterstitialAdloa){
+    _rewardedInterstitialAd.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+      _counter++;
+    });
+
+  }
+  else{
+    print("Ad not loaded");
+  }
+}
+
+void loadNativeAd(){
+   _nativeAd = NativeAd(
+    adUnitId: 'cca-app-pub-3940256099942544/2247696110',
+    request: AdRequest(),
+    factoryId: 'adFactory',
+    listener: NativeAdListener(
+      onAdLoaded: (_) {
+        setState(() {
+          _nativeisLoaded = true;
+        });
+      },
+      onAdFailedToLoad: (ad, error) {
+        print('Native ad failed to load: $error');
+        ad.dispose();
+      },
+    ),
+  );
+  _nativeAd.load();
+  
+}
+  @override
+  void dispose() {
+    _bannerAd.dispose();
+    _interstitialAd.dispose();
+    _rewardedInterstitialAd.dispose();
+    _anchoredAdaptiveAd.dispose();
+    _nativeAd.dispose();
+    streamSubscription.cancel();
+    super.dispose();
+}
   void _incrementCounter() async {
   try {
     await FirebaseAnalytics.instance.logEvent(
@@ -230,20 +340,20 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void onAdLoaded(InterstitialAd ad) {
-    setState(() {
-      _interstitialAd = ad;
-      _interstitialAdLoaded = true;
-      _interstitialAd.fullScreenContentCallback=FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (ad){
-          _interstitialAd.dispose();
+  
 
+  void onRewardedAdLoaded(RewardedInterstitialAd ad) {
+    setState(() {
+      _rewardedInterstitialAd = ad;
+      _rewardedInterstitialAdloa=true;
+      _rewardedInterstitialAd.fullScreenContentCallback = FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (RewardedInterstitialAd ad) {
+          _rewardedInterstitialAd.dispose();
+          initAD();},
+        onAdFailedToShowFullScreenContent: (RewardedInterstitialAd ad, AdError error) {
+          _rewardedInterstitialAd.dispose();
+          initAD();
         },
-        onAdFailedToShowFullScreenContent: (ad, error) {
-          _interstitialAd.dispose();
-          
-        },
-        
       );
     });
   }
@@ -252,7 +362,7 @@ class _MyHomePageState extends State<MyHomePage> {
 class SignInPage extends StatelessWidget {
   const SignInPage({Key? key}) : super(key: key);
 
-  @override
+ @override
   Widget build(BuildContext context) {
     final TextEditingController emailController = TextEditingController();
     final TextEditingController passwordController = TextEditingController();
@@ -376,8 +486,7 @@ class SignUpPage extends StatelessWidget {
                 },
                 child: const Text('Sign Up'),
               ),
-              TextButton(
-                onPressed: () {
+              TextButton(onPressed: () {
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const SignInPage()));
                 },
                 child: const Text('Sign In'),
